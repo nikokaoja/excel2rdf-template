@@ -1,0 +1,39 @@
+name: excel2rdf
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  convert-validate-deploy-vocabulary:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: prepare # pulls repository and dowloads xls2rdf and qSKOS
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull
+          curl -L https://github.com/cmader/qSKOS/releases/download/2.0.3/qSKOS-cmd.jar -o qSKOS.jar
+          curl -L https://github.com/sparna-git/xls2rdf/releases/download/2.1.1/xls2rdf-app-2.1.1-onejar.jar -o xls2rdf.jar
+
+      - name: build # converts vocabulary.xlsx to vocabulary.ttl
+        run: |
+          java -jar xls2rdf.jar convert -i ./vocabulary.xlsx -o ./vocabulary.ttl -l en
+          mv xls2rdf.log ./logs/conversion.log
+
+      - name: validate # validates vocabulary.ttl against set of qSKOS tests
+        run: |
+          java -jar qSKOS.jar analyze -dc mil,bl ./vocabulary.ttl -o ./logs/validation.log
+
+      - name: deploy # commits changes to the repository
+        run: |
+          rm qSKOS.jar
+          rm xls2rdf.jar
+          git add .
+          git diff-index --quiet HEAD || git commit -m "generated new .ttl from .xlsx file"
+          git push
